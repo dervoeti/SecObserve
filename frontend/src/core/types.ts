@@ -138,6 +138,7 @@ export interface Observation extends RaRecord {
     issue_tracker_issue_id: string;
     issue_tracker_issue_url: string;
     has_potential_duplicates: boolean;
+    kev: boolean;
 }
 
 export const OBSERVATION_SEVERITY_CRITICAL = "Critical";

@@ -540,6 +540,7 @@ class Observation(Model):
     issue_tracker_issue_id = CharField(max_length=255, blank=True)
     issue_tracker_jira_initial_status = CharField(max_length=255, blank=True)
     has_potential_duplicates = BooleanField(default=False)
+    kev = BooleanField(default=False)
 
     class Meta:
         indexes = [

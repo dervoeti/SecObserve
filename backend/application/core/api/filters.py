@@ -171,6 +171,9 @@ class ObservationFilter(FilterSet):
     origin_cloud_qualified_resource = CharFilter(
         field_name="origin_cloud_qualified_resource", lookup_expr="icontains"
     )
+    vulnerability_id = CharFilter(
+        field_name="vulnerability_id", lookup_expr="icontains"
+    )
     scanner = CharFilter(field_name="scanner", lookup_expr="icontains")
     age = ChoiceFilter(field_name="age", method="get_age", choices=AGE_CHOICES)
     product_group = ModelChoiceFilter(
@@ -196,12 +199,14 @@ class ObservationFilter(FilterSet):
             ("origin_endpoint_hostname", "origin_endpoint_hostname"),
             ("origin_source_file", "origin_source_file"),
             ("origin_cloud_qualified_resource", "origin_cloud_qualified_resource"),
+            ("vulnerability_id", "vulnerability_id"),
             ("parser__name", "parser_data.name"),
             ("parser__type", "parser_data.type"),
             ("scanner", "scanner_name"),
             ("last_observation_log", "last_observation_log"),
             ("epss_score", "epss_score"),
             ("has_potential_duplicates", "has_potential_duplicates"),
+            ("kev", "kev")
         ),
     )
 
@@ -219,6 +224,7 @@ class ObservationFilter(FilterSet):
             "api_configuration_name",
             "origin_service",
             "has_potential_duplicates",
+            "kev",
         ]
 
     def get_age(self, queryset, field_name, value):  # pylint: disable=unused-argument

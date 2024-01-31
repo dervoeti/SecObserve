@@ -180,7 +180,7 @@ const ObservationsEmbeddedList = ({ product }: ObservationsEmbeddedListProps) =>
                         <BooleanField source="has_potential_duplicates" label="Dupl." />
                     </DatagridConfigurable>
                 </Paper>
-                <Pagination />
+                <Pagination rowsPerPageOptions={[10, 25, 50, 100, 500]} />
             </div>
         </ListContextProvider>
     );

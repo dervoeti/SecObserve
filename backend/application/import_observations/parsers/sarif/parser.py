@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from json import dumps, load
+import re
 from typing import Optional, Tuple
 
 from django.core.files.base import File
@@ -195,7 +196,7 @@ class SARIFParser(BaseParser, BaseFileParser):
     def get_title(
         self, sarif_scanner: str, sarif_rule_id: str, sarif_rule: Rule
     ) -> str:
-        if sarif_rule.name:
+        if sarif_rule.name and not sarif_scanner.lower().startswith("grype"):
             title = sarif_rule.name
         else:
             title = sarif_rule_id
@@ -241,19 +242,31 @@ class SARIFParser(BaseParser, BaseFileParser):
         self, result: dict, sarif_scanner: str, sarif_rule: Rule
     ) -> str:
         sarif_level = result.get("level")
-        if sarif_level:
-            parser_severity = SEVERITIES.get(
-                sarif_level.lower(), Observation.SEVERITY_UNKOWN
-            )
-        elif sarif_rule.default_level:
-            parser_severity = SEVERITIES.get(
-                sarif_rule.default_level.lower(),
-                Observation.SEVERITY_UNKOWN,
-            )
-        elif self.get_bandit_severity(sarif_scanner, result):
-            parser_severity = self.get_bandit_severity(sarif_scanner, result)
+
+        if sarif_scanner.lower().startswith("grype"):
+            grype_severity = float(sarif_rule.properties.get("security-severity"))
+            if grype_severity > 9.0:
+                parser_severity = Observation.SEVERITY_CRITICAL
+            elif grype_severity > 7.0:
+                parser_severity = Observation.SEVERITY_HIGH
+            elif grype_severity > 4.0:
+                parser_severity = Observation.SEVERITY_MEDIUM
+            else:
+                parser_severity = Observation.SEVERITY_LOW
         else:
-            parser_severity = Observation.SEVERITY_UNKOWN
+            if sarif_level:
+                parser_severity = SEVERITIES.get(
+                    sarif_level.lower(), Observation.SEVERITY_UNKOWN
+                )
+            elif sarif_rule.default_level:
+                parser_severity = SEVERITIES.get(
+                    sarif_rule.default_level.lower(),
+                    Observation.SEVERITY_UNKOWN,
+                )
+            elif self.get_bandit_severity(sarif_scanner, result):
+                parser_severity = self.get_bandit_severity(sarif_scanner, result)
+            else:
+                parser_severity = Observation.SEVERITY_UNKOWN
 
         return parser_severity
 
@@ -403,8 +416,17 @@ class SARIFParser(BaseParser, BaseFileParser):
         ):
             return title
 
-        if sarif_rule_id.startswith("CVE-") or sarif_rule_id.startswith("GHSA-"):
-            return sarif_rule_id
+        if sarif_rule_id.startswith("CVE-"):
+            pattern = r"CVE-\d{4}-\d+"
+            match = re.search(pattern, sarif_rule_id)
+            if match:
+                return match.group()
+
+        if sarif_rule_id.startswith("GHSA-"):
+            pattern = r"GHSA-\w+-\w+-\w+"
+            match = re.search(pattern, sarif_rule_id)
+            if match:
+                return match.group()
 
         return ""
 

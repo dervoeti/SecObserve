@@ -1,0 +1,25 @@
+log:
+  level: INFO
+
+entryPoints:
+  http:
+    address: ":80"
+  https:
+    address: ":443"
+
+providers:
+  docker:
+    exposedByDefault: false
+    network: web
+    endpoint: "unix:///var/run/docker.sock"
+    watch: true
+
+accessLog: {}
+certificatesResolvers:
+  myresolver:
+    acme:
+      email: lukas.voetmand@stackable.tech
+      storage: /acme.json
+      httpChallenge:
+        # used during the challenge
+        entryPoint: http

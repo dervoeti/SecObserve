@@ -62,6 +62,9 @@ else:
         "default": {
             "ATOMIC_REQUESTS": True,
             "ENGINE": env("DATABASE_ENGINE"),
+			"OPTIONS": {
+				"options": "-c search_path=secobserve"
+			},
             "HOST": env("DATABASE_HOST"),
             "PORT": env("DATABASE_PORT"),
             "NAME": env("DATABASE_DB"),

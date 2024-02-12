@@ -6,17 +6,19 @@ from typing import Optional, Tuple
 from django.core.files.base import File
 from packageurl import PackageURL
 
-from application.core.models import Observation, Parser
+from application.core.models import Observation
+from application.core.types import Severity
 from application.import_observations.parsers.base_parser import (
     BaseFileParser,
     BaseParser,
 )
+from application.import_observations.types import Parser_Type
 
 SEVERITIES = {
-    "error": Observation.SEVERITY_HIGH,
-    "warning": Observation.SEVERITY_MEDIUM,
-    "note": Observation.SEVERITY_LOW,
-    "none": Observation.SEVERITY_NONE,
+    "error": Severity.SEVERITY_HIGH,
+    "warning": Severity.SEVERITY_MEDIUM,
+    "note": Severity.SEVERITY_LOW,
+    "none": Severity.SEVERITY_NONE,
 }
 
 
@@ -48,7 +50,7 @@ class SARIFParser(BaseParser, BaseFileParser):
 
     @classmethod
     def get_type(cls) -> str:
-        return Parser.TYPE_SAST
+        return Parser_Type.TYPE_SAST
 
     def check_format(self, file: File) -> tuple[bool, list[str], dict]:
         try:
@@ -242,7 +244,6 @@ class SARIFParser(BaseParser, BaseFileParser):
         self, result: dict, sarif_scanner: str, sarif_rule: Rule
     ) -> str:
         sarif_level = result.get("level")
-
         if sarif_scanner.lower().startswith("grype"):
             grype_severity = float(sarif_rule.properties.get("security-severity"))
             if grype_severity > 9.0:
@@ -256,17 +257,17 @@ class SARIFParser(BaseParser, BaseFileParser):
         else:
             if sarif_level:
                 parser_severity = SEVERITIES.get(
-                    sarif_level.lower(), Observation.SEVERITY_UNKOWN
+                    sarif_level.lower(), Severity.SEVERITY_UNKOWN
                 )
             elif sarif_rule.default_level:
                 parser_severity = SEVERITIES.get(
                     sarif_rule.default_level.lower(),
-                    Observation.SEVERITY_UNKOWN,
+                    Severity.SEVERITY_UNKOWN,
                 )
             elif self.get_bandit_severity(sarif_scanner, result):
                 parser_severity = self.get_bandit_severity(sarif_scanner, result)
             else:
-                parser_severity = Observation.SEVERITY_UNKOWN
+                parser_severity = Severity.SEVERITY_UNKOWN
 
         return parser_severity
 
@@ -289,7 +290,9 @@ class SARIFParser(BaseParser, BaseFileParser):
             sarif_rule.short_description
             and sarif_rule.short_description not in sarif_message_text
             and sarif_rule.short_description not in title
+            and not sarif_scanner.lower().startswith("semgrep")
         ):
+            # Rule short description of some scanners have only redundant information
             description += (
                 f"**Rule short description:** {sarif_rule.short_description}\n\n"
             )
@@ -301,18 +304,23 @@ class SARIFParser(BaseParser, BaseFileParser):
             sarif_rule.full_description
             and sarif_rule.full_description not in sarif_message_text
             and sarif_rule.full_description not in rule_short_description
+            and not sarif_scanner.lower().startswith("semgrep")
         ):
+            # Rule short description of some scanners have only redundant information
             description += (
                 f"**Rule full description:** {sarif_rule.full_description}\n\n"
             )
 
-        if (
+        if (  # pylint: disable=too-many-boolean-expressions
             sarif_rule.help
             and sarif_rule.help not in sarif_message_text
             and sarif_rule.help not in rule_short_description
             and not sarif_scanner.lower().startswith("trivy")
+            and not sarif_scanner.lower().startswith("semgrep")
+            and not sarif_scanner.lower().startswith("checkov")
         ):
-            # Help text of Trivy has only redundant information
+            # Still pretty easy to understand
+            # Help text of some scanners have only redundant information
             description += f"**Rule help:** {sarif_rule.help}\n\n"
 
         if sarif_snippet:

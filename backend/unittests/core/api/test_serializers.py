@@ -1,8 +1,11 @@
 from unittest.mock import patch
 
+from rest_framework.serializers import ValidationError
+
 from application.access_control.services.roles_permissions import Permissions, Roles
 from application.core.api.serializers import BranchSerializer, ProductSerializer
-from application.core.models import Observation, Product_Member
+from application.core.models import Product_Member
+from application.core.types import Severity, Status
 from unittests.base_test_case import BaseTestCase
 
 
@@ -25,8 +28,8 @@ class TestBranchSerializer(BaseTestCase):
         )
         mock_filter.assert_called_with(
             branch=self.branch_1,
-            current_severity=Observation.SEVERITY_CRITICAL,
-            current_status=Observation.STATUS_OPEN,
+            current_severity=Severity.SEVERITY_CRITICAL,
+            current_status=Status.STATUS_OPEN,
         )
 
     @patch("application.core.models.Observation.objects.filter")
@@ -38,8 +41,8 @@ class TestBranchSerializer(BaseTestCase):
         )
         mock_filter.assert_called_with(
             branch=self.branch_1,
-            current_severity=Observation.SEVERITY_HIGH,
-            current_status=Observation.STATUS_OPEN,
+            current_severity=Severity.SEVERITY_HIGH,
+            current_status=Status.STATUS_OPEN,
         )
 
     @patch("application.core.models.Observation.objects.filter")
@@ -51,8 +54,8 @@ class TestBranchSerializer(BaseTestCase):
         )
         mock_filter.assert_called_with(
             branch=self.branch_1,
-            current_severity=Observation.SEVERITY_MEDIUM,
-            current_status=Observation.STATUS_OPEN,
+            current_severity=Severity.SEVERITY_MEDIUM,
+            current_status=Status.STATUS_OPEN,
         )
 
     @patch("application.core.models.Observation.objects.filter")
@@ -64,8 +67,8 @@ class TestBranchSerializer(BaseTestCase):
         )
         mock_filter.assert_called_with(
             branch=self.branch_1,
-            current_severity=Observation.SEVERITY_LOW,
-            current_status=Observation.STATUS_OPEN,
+            current_severity=Severity.SEVERITY_LOW,
+            current_status=Status.STATUS_OPEN,
         )
 
     @patch("application.core.models.Observation.objects.filter")
@@ -77,8 +80,8 @@ class TestBranchSerializer(BaseTestCase):
         )
         mock_filter.assert_called_with(
             branch=self.branch_1,
-            current_severity=Observation.SEVERITY_NONE,
-            current_status=Observation.STATUS_OPEN,
+            current_severity=Severity.SEVERITY_NONE,
+            current_status=Status.STATUS_OPEN,
         )
 
     @patch("application.core.models.Observation.objects.filter")
@@ -90,8 +93,8 @@ class TestBranchSerializer(BaseTestCase):
         )
         mock_filter.assert_called_with(
             branch=self.branch_1,
-            current_severity=Observation.SEVERITY_UNKOWN,
-            current_status=Observation.STATUS_OPEN,
+            current_severity=Severity.SEVERITY_UNKOWN,
+            current_status=Status.STATUS_OPEN,
         )
 
 
@@ -107,8 +110,8 @@ class TestProductSerializer(BaseTestCase):
         mock_filter.assert_called_with(
             product=self.product_1,
             branch=self.branch_1,
-            current_severity=Observation.SEVERITY_CRITICAL,
-            current_status=Observation.STATUS_OPEN,
+            current_severity=Severity.SEVERITY_CRITICAL,
+            current_status=Status.STATUS_OPEN,
         )
 
     @patch("application.core.models.Observation.objects.filter")
@@ -121,8 +124,8 @@ class TestProductSerializer(BaseTestCase):
         mock_filter.assert_called_with(
             product=self.product_1,
             branch=self.branch_1,
-            current_severity=Observation.SEVERITY_HIGH,
-            current_status=Observation.STATUS_OPEN,
+            current_severity=Severity.SEVERITY_HIGH,
+            current_status=Status.STATUS_OPEN,
         )
 
     @patch("application.core.models.Observation.objects.filter")
@@ -135,8 +138,8 @@ class TestProductSerializer(BaseTestCase):
         mock_filter.assert_called_with(
             product=self.product_1,
             branch=self.branch_1,
-            current_severity=Observation.SEVERITY_MEDIUM,
-            current_status=Observation.STATUS_OPEN,
+            current_severity=Severity.SEVERITY_MEDIUM,
+            current_status=Status.STATUS_OPEN,
         )
 
     @patch("application.core.models.Observation.objects.filter")
@@ -149,8 +152,8 @@ class TestProductSerializer(BaseTestCase):
         mock_filter.assert_called_with(
             product=self.product_1,
             branch=self.branch_1,
-            current_severity=Observation.SEVERITY_LOW,
-            current_status=Observation.STATUS_OPEN,
+            current_severity=Severity.SEVERITY_LOW,
+            current_status=Status.STATUS_OPEN,
         )
 
     @patch("application.core.models.Observation.objects.filter")
@@ -163,8 +166,8 @@ class TestProductSerializer(BaseTestCase):
         mock_filter.assert_called_with(
             product=self.product_1,
             branch=self.branch_1,
-            current_severity=Observation.SEVERITY_NONE,
-            current_status=Observation.STATUS_OPEN,
+            current_severity=Severity.SEVERITY_NONE,
+            current_status=Status.STATUS_OPEN,
         )
 
     @patch("application.core.models.Observation.objects.filter")
@@ -177,8 +180,8 @@ class TestProductSerializer(BaseTestCase):
         mock_filter.assert_called_with(
             product=self.product_1,
             branch=self.branch_1,
-            current_severity=Observation.SEVERITY_UNKOWN,
-            current_status=Observation.STATUS_OPEN,
+            current_severity=Severity.SEVERITY_UNKOWN,
+            current_status=Status.STATUS_OPEN,
         )
 
     @patch("application.core.api.serializers.get_current_user")
@@ -272,3 +275,44 @@ class TestProductSerializer(BaseTestCase):
         self.assertEqual(4, data["security_gate_threshold_low"])
         self.assertEqual(5, data["security_gate_threshold_none"])
         self.assertEqual(6, data["security_gate_threshold_unkown"])
+
+    def test_validate_repository_prefix_empty(self):
+        self.product_1.repository_prefix = ""
+        product_serializer = ProductSerializer(self.product_1)
+
+        validated_data = product_serializer.run_validation(product_serializer.data)
+
+        self.assertEqual("", validated_data["repository_prefix"])
+
+    def test_validate_repository_prefix_invalid(self):
+        self.product_1.repository_prefix = "invalid_url"
+        product_serializer = ProductSerializer(self.product_1)
+
+        with self.assertRaises(ValidationError) as e:
+            product_serializer.run_validation(product_serializer.data)
+
+        self.assertEqual(
+            "{'repository_prefix': [ErrorDetail(string='Not a valid URL', code='invalid')]}",
+            str(e.exception),
+        )
+
+    def test_validate_repository_prefix_valid(self):
+        self.product_1.repository_prefix = "https://example.com"
+        product_serializer = ProductSerializer(self.product_1)
+
+        validated_data = product_serializer.run_validation(product_serializer.data)
+
+        self.assertEqual("https://example.com", validated_data["repository_prefix"])
+
+    def test_validate_notification_msteams_slack_invalid(self):
+        self.product_1.notification_ms_teams_webhook = "invalid_url"
+        self.product_1.notification_slack_webhook = "invalid_url"
+        product_serializer = ProductSerializer(self.product_1)
+
+        with self.assertRaises(ValidationError) as e:
+            product_serializer.run_validation(product_serializer.data)
+
+        self.assertEqual(
+            "{'notification_ms_teams_webhook': [ErrorDetail(string='Not a valid URL', code='invalid')], 'notification_slack_webhook': [ErrorDetail(string='Not a valid URL', code='invalid')]}",
+            str(e.exception),
+        )

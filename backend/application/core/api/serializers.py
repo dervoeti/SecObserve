@@ -1,5 +1,7 @@
 from typing import Optional
+from urllib.parse import urlparse
 
+import validators
 from django.utils import timezone
 from packageurl import PackageURL
 from rest_framework.exceptions import PermissionDenied
@@ -36,10 +38,13 @@ from application.core.models import (
 from application.core.queries.product_member import get_product_member
 from application.core.services.observation_log import create_observation_log
 from application.core.services.security_gate import check_security_gate
+from application.core.types import Severity, Status
+from application.import_observations.types import Parser_Type
 from application.issue_tracker.services.issue_tracker import (
     issue_tracker_factory,
     push_observation_to_issue_tracker,
 )
+from application.issue_tracker.types import Issue_Tracker
 
 
 class ProductCoreSerializer(ModelSerializer):
@@ -199,7 +204,7 @@ class ProductSerializer(ProductCoreSerializer):
 
     def validate(self, attrs: dict):  # pylint: disable=too-many-branches
         # There are quite a lot of branches, but at least they are not nested too much
-        if attrs.get("issue_tracker_type") == Product.ISSUE_TRACKER_GITHUB:
+        if attrs.get("issue_tracker_type") == Issue_Tracker.ISSUE_TRACKER_GITHUB:
             attrs["issue_tracker_base_url"] = "https://api.github.com"
 
         if not (
@@ -222,7 +227,7 @@ class ProductSerializer(ProductCoreSerializer):
                 "Issue tracker data must be set when issue tracking is active"
             )
 
-        if attrs.get("issue_tracker_type") == Product.ISSUE_TRACKER_JIRA:
+        if attrs.get("issue_tracker_type") == Issue_Tracker.ISSUE_TRACKER_JIRA:
             if not attrs.get("issue_tracker_username"):
                 raise ValidationError(
                     "Username must be set when issue tracker type is Jira"
@@ -238,7 +243,7 @@ class ProductSerializer(ProductCoreSerializer):
 
         if (
             attrs.get("issue_tracker_type")
-            and attrs.get("issue_tracker_type") != Product.ISSUE_TRACKER_JIRA
+            and attrs.get("issue_tracker_type") != Issue_Tracker.ISSUE_TRACKER_JIRA
         ):
             if attrs.get("issue_tracker_username"):
                 raise ValidationError(
@@ -260,6 +265,15 @@ class ProductSerializer(ProductCoreSerializer):
             raise ValidationError("Product group must be a product group")
 
         return product
+
+    def validate_repository_prefix(self, repository_prefix: str) -> str:
+        return _validate_url(repository_prefix)
+
+    def validate_notification_ms_teams_webhook(self, repository_prefix: str) -> str:
+        return _validate_url(repository_prefix)
+
+    def validate_notification_slack_webhook(self, repository_prefix: str) -> str:
+        return _validate_url(repository_prefix)
 
 
 class NestedProductSerializer(ModelSerializer):
@@ -454,6 +468,7 @@ class ObservationSerializer(ModelSerializer):
     references = NestedReferenceSerializer(many=True)
     evidences = NestedEvidenceSerializer(many=True)
     origin_source_file_url = SerializerMethodField()
+    origin_component_purl_type = SerializerMethodField()
     issue_tracker_issue_url = SerializerMethodField()
 
     class Meta:
@@ -472,10 +487,17 @@ class ObservationSerializer(ModelSerializer):
         origin_source_file_url = None
 
         if observation.product.repository_prefix and observation.origin_source_file:
+            if not validators.url(observation.product.repository_prefix):
+                return None
+
+            parsed_url = urlparse(observation.product.repository_prefix)
+            if parsed_url.scheme not in ["http", "https"]:
+                return None
+
             origin_source_file_url = observation.product.repository_prefix
             if origin_source_file_url.endswith("/"):
                 origin_source_file_url = origin_source_file_url[:-1]
-            if "dev.azure.com" in observation.product.repository_prefix:
+            if parsed_url.netloc == "dev.azure.com":
                 origin_source_file_url = self._create_azure_devops_url(
                     observation, origin_source_file_url
                 )
@@ -485,6 +507,12 @@ class ObservationSerializer(ModelSerializer):
                 )
 
         return origin_source_file_url
+
+    def get_origin_component_purl_type(self, observation: Observation) -> str:
+        if observation.origin_component_purl:
+            purl = PackageURL.from_string(observation.origin_component_purl)
+            return purl.type
+        return ""
 
     def _create_azure_devops_url(
         self, observation: Observation, origin_source_file_url: str
@@ -563,7 +591,7 @@ class ObservationListSerializer(ModelSerializer):
 class ObservationUpdateSerializer(ModelSerializer):
     def validate(self, attrs: dict):
         self.instance: Observation
-        if self.instance and self.instance.parser.type != Parser.TYPE_MANUAL:
+        if self.instance and self.instance.parser.type != Parser_Type.TYPE_MANUAL:
             raise ValidationError("Only manual observations can be updated")
 
         attrs["import_last_seen"] = timezone.now()
@@ -630,7 +658,11 @@ class ObservationUpdateSerializer(ModelSerializer):
             "parser_severity",
             "parser_status",
             "origin_component_name_version",
+            "origin_component_name",
+            "origin_component_version",
             "origin_docker_image_name_tag",
+            "origin_docker_image_name",
+            "origin_docker_image_tag",
             "origin_endpoint_url",
             "origin_service_name",
             "origin_source_file",
@@ -645,8 +677,8 @@ class ObservationUpdateSerializer(ModelSerializer):
 
 class ObservationCreateSerializer(ModelSerializer):
     def validate(self, attrs):
-        attrs["parser"] = Parser.objects.get(type=Parser.TYPE_MANUAL)
-        attrs["scanner"] = Parser.TYPE_MANUAL
+        attrs["parser"] = Parser.objects.get(type=Parser_Type.TYPE_MANUAL)
+        attrs["scanner"] = Parser_Type.TYPE_MANUAL
         attrs["import_last_seen"] = timezone.now()
 
         if attrs.get("branch"):
@@ -690,7 +722,11 @@ class ObservationCreateSerializer(ModelSerializer):
             "parser_severity",
             "parser_status",
             "origin_component_name_version",
+            "origin_component_name",
+            "origin_component_version",
             "origin_docker_image_name_tag",
+            "origin_docker_image_name",
+            "origin_docker_image_tag",
             "origin_endpoint_url",
             "origin_service_name",
             "origin_source_file",
@@ -704,8 +740,8 @@ class ObservationCreateSerializer(ModelSerializer):
 
 
 class ObservationAssessmentSerializer(Serializer):
-    severity = ChoiceField(choices=Observation.SEVERITY_CHOICES, required=False)
-    status = ChoiceField(choices=Observation.STATUS_CHOICES, required=False)
+    severity = ChoiceField(choices=Severity.SEVERITY_CHOICES, required=False)
+    status = ChoiceField(choices=Status.STATUS_CHOICES, required=False)
     comment = CharField(max_length=255, required=True)
 
 
@@ -720,8 +756,8 @@ class ObservationBulkDeleteSerializer(Serializer):
 
 
 class ObservationBulkAssessmentSerializer(Serializer):
-    severity = ChoiceField(choices=Observation.SEVERITY_CHOICES, required=False)
-    status = ChoiceField(choices=Observation.STATUS_CHOICES, required=False)
+    severity = ChoiceField(choices=Severity.SEVERITY_CHOICES, required=False)
+    status = ChoiceField(choices=Status.STATUS_CHOICES, required=False)
     comment = CharField(max_length=255, required=True)
     observations = ListField(
         child=IntegerField(min_value=1), min_length=0, max_length=1000, required=True
@@ -784,3 +820,10 @@ def _get_origin_component_name_version(observation: Observation) -> str:
             origin_component_name_version_with_type += f" ({purl.type})"
 
     return origin_component_name_version_with_type
+
+
+def _validate_url(url: str) -> str:
+    if url and not validators.url(url):
+        raise ValidationError("Not a valid URL")
+
+    return url

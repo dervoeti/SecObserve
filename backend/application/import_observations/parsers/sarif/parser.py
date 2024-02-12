@@ -247,13 +247,13 @@ class SARIFParser(BaseParser, BaseFileParser):
         if sarif_scanner.lower().startswith("grype"):
             grype_severity = float(sarif_rule.properties.get("security-severity"))
             if grype_severity > 9.0:
-                parser_severity = Observation.SEVERITY_CRITICAL
+                parser_severity = Severity.SEVERITY_CRITICAL
             elif grype_severity > 7.0:
-                parser_severity = Observation.SEVERITY_HIGH
+                parser_severity = Severity.SEVERITY_HIGH
             elif grype_severity > 4.0:
-                parser_severity = Observation.SEVERITY_MEDIUM
+                parser_severity = Severity.SEVERITY_MEDIUM
             else:
-                parser_severity = Observation.SEVERITY_LOW
+                parser_severity = Severity.SEVERITY_LOW
         else:
             if sarif_level:
                 parser_severity = SEVERITIES.get(
